@@ -1,20 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.schemas import schemas
-from app.models import models
-from app.auth import auth
 
-router = APIRouter()
+from .. import schemas
+from ..models import models
+from ..database import get_db
+from ..auth import auth
 
-@router.post("/users/", response_model=schemas.User)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    hashed_password = auth.get_password_hash(user.password)
-    db_user = models.User(email=user.email, hashed_password=hashed_password, username=user.username)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+router = APIRouter(
+    prefix="/users",
+    tags=["users"]
+)
+
+@router.get("/me/", response_model=schemas.User)
+async def read_users_me(current_user: models.User = Depends(auth.get_current_active_user)):
+    return current_user
+
+@router.get("/{user_id}", response_model=schemas.User)
+def read_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_active_user)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    # For now, allow any logged-in user to view any user's public profile (username, email, created_at)
+    # More restrictive access can be implemented later if needed.
+    return user

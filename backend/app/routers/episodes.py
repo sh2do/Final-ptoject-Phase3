@@ -1,34 +1,94 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from typing import List
-from app.database import get_db
-from app.schemas import schemas
-from app.models import models
-from app.auth import auth
 
-router = APIRouter()
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-@router.post("/episodes/", response_model=schemas.Episode)
-def create_episode(episode: schemas.EpisodeCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+from .. import schemas
+from ..models import models
+from ..database import get_db
+from ..auth import auth
+
+router = APIRouter(
+    prefix="/episodes",
+    tags=["episodes"]
+)
+
+@router.post("/", response_model=schemas.Episode, status_code=status.HTTP_201_CREATED)
+def create_episode(
+    episode: schemas.EpisodeBase,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    # Ensure the anime exists
+    anime = db.query(models.Anime).filter(models.Anime.id == episode.anime_id).first()
+    if not anime:
+        raise HTTPException(status_code=404, detail="Anime not found")
+
     db_episode = models.Episode(**episode.dict())
     db.add(db_episode)
     db.commit()
     db.refresh(db_episode)
     return db_episode
 
-@router.get("/episodes/", response_model=List[schemas.Episode])
-def read_episodes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    episodes = db.query(models.Episode).offset(skip).limit(limit).all()
+@router.get("/anime/{anime_id}", response_model=List[schemas.Episode])
+def read_episodes_for_anime(
+    anime_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    # Ensure the anime exists
+    anime = db.query(models.Anime).filter(models.Anime.id == anime_id).first()
+    if not anime:
+        raise HTTPException(status_code=404, detail="Anime not found")
+
+    episodes = db.query(models.Episode).filter(models.Episode.anime_id == anime_id).order_by(models.Episode.episode_number).offset(skip).limit(limit).all()
     return episodes
 
-@router.get("/anime/{anime_id}/episodes/", response_model=List[schemas.Episode])
-def read_anime_episodes(anime_id: int, db: Session = Depends(get_db)):
-    episodes = db.query(models.Episode).filter(models.Episode.anime_id == anime_id).all()
-    return episodes
+@router.get("/{episode_id}", response_model=schemas.Episode)
+def read_episode(
+    episode_id: int,
+    db: Session = Depends(get_db)
+):
+    episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
+    if episode is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return episode
 
-@router.get("/episodes/{episode_id}", response_model=schemas.Episode)
-def read_episode(episode_id: int, db: Session = Depends(get_db)):
+@router.put("/{episode_id}", response_model=schemas.Episode)
+def update_episode(
+    episode_id: int,
+    episode: schemas.EpisodeBase,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
     db_episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
     if db_episode is None:
         raise HTTPException(status_code=404, detail="Episode not found")
+    
+    # Ensure the anime_id, if provided, is valid
+    if episode.anime_id:
+        anime = db.query(models.Anime).filter(models.Anime.id == episode.anime_id).first()
+        if not anime:
+            raise HTTPException(status_code=404, detail="Anime not found for the provided anime_id")
+
+    for key, value in episode.dict(exclude_unset=True).items():
+        setattr(db_episode, key, value)
+    
+    db.commit()
+    db.refresh(db_episode)
     return db_episode
+
+@router.delete("/{episode_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_episode(
+    episode_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    db_episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
+    if db_episode is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    
+    db.delete(db_episode)
+    db.commit()
+    return {"ok": True}

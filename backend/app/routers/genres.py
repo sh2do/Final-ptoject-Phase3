@@ -1,29 +1,81 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from typing import List
-from app.database import get_db
-from app.schemas import schemas
-from app.models import models
-from app.auth import auth
 
-router = APIRouter()
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-@router.post("/genres/", response_model=schemas.Genre)
-def create_genre(genre: schemas.GenreCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+from .. import schemas
+from ..models import models
+from ..database import get_db
+from ..auth import auth
+
+router = APIRouter(
+    prefix="/genres",
+    tags=["genres"]
+)
+
+@router.post("/", response_model=schemas.Genre, status_code=status.HTTP_201_CREATED)
+def create_genre(
+    genre: schemas.GenreBase,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    db_genre = db.query(models.Genre).filter(models.Genre.name == genre.name).first()
+    if db_genre:
+        raise HTTPException(status_code=400, detail="Genre name already registered")
+    
     db_genre = models.Genre(**genre.dict())
     db.add(db_genre)
     db.commit()
     db.refresh(db_genre)
     return db_genre
 
-@router.get("/genres/", response_model=List[schemas.Genre])
-def read_genres(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+@router.get("/", response_model=List[schemas.Genre])
+def read_genres(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
     genres = db.query(models.Genre).offset(skip).limit(limit).all()
     return genres
 
-@router.get("/genres/{genre_id}", response_model=schemas.Genre)
-def read_genre(genre_id: int, db: Session = Depends(get_db)):
+@router.get("/{genre_id}", response_model=schemas.Genre)
+def read_genre(
+    genre_id: int,
+    db: Session = Depends(get_db)
+):
+    genre = db.query(models.Genre).filter(models.Genre.id == genre_id).first()
+    if genre is None:
+        raise HTTPException(status_code=404, detail="Genre not found")
+    return genre
+
+@router.put("/{genre_id}", response_model=schemas.Genre)
+def update_genre(
+    genre_id: int,
+    genre: schemas.GenreBase,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
     db_genre = db.query(models.Genre).filter(models.Genre.id == genre_id).first()
     if db_genre is None:
         raise HTTPException(status_code=404, detail="Genre not found")
+    
+    for key, value in genre.dict(exclude_unset=True).items():
+        setattr(db_genre, key, value)
+    
+    db.commit()
+    db.refresh(db_genre)
     return db_genre
+
+@router.delete("/{genre_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_genre(
+    genre_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    db_genre = db.query(models.Genre).filter(models.Genre.id == genre_id).first()
+    if db_genre is None:
+        raise HTTPException(status_code=404, detail="Genre not found")
+    
+    db.delete(db_genre)
+    db.commit()
+    return {"ok": True}

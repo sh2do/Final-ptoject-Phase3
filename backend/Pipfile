@@ -6,14 +6,15 @@ name = "pypi"
 [packages]
 fastapi = "*"
 uvicorn = {extras = ["standard"], version = "*"}
-sqlalchemy = "*"
+SQLAlchemy = "*"
 psycopg2-binary = "*"
-pydantic = {extras = ["email"], version = "*"}
-python-jose = {extras = ["cryptography"], version = "*"}
-passlib = {extras = ["bcrypt"], version = "*"}
 python-dotenv = "*"
+passlib = {extras = ["bcrypt"], version = "*"}
+python-jose = {extras = ["jwt"], version = "*"}
+pydantic = {extras = ["email"], version = "*"}
+
 
 [dev-packages]
 
 [requires]
-python_version = "3.11"
+python_version = "3.9"

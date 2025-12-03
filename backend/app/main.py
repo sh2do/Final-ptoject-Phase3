@@ -1,17 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import engine
-from app.models import models
-from app.routers import anime, users, auth, episodes, characters, studios, genres
 
+from .database import engine
+from .models import models
+from .routers import auth, users, studios, genres, characters, episodes, anime, favorites
+
+# Create all tables in the database
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(
+    title="Anime Collection Tracker API",
+    description="API for managing an anime collection, user progress, and related entities.",
+    version="0.1.0",
+)
 
-# CORS
+# Configure CORS
 origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
+    "http://localhost:3000",  # Common alternative frontend port
+    "http://localhost:5173",  # Default Vite frontend port
+    "http://localhost:8000",  # For development if frontend runs on a different port or direct access
 ]
 
 app.add_middleware(
@@ -22,14 +29,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api", tags=["auth"])
-app.include_router(users.router, prefix="/api", tags=["users"])
-app.include_router(anime.router, prefix="/api", tags=["anime"])
-app.include_router(episodes.router, prefix="/api", tags=["episodes"])
-app.include_router(characters.router, prefix="/api", tags=["characters"])
-app.include_router(studios.router, prefix="/api", tags=["studios"])
-app.include_router(genres.router, prefix="/api", tags=["genres"])
+# Include routers
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(studios.router)
+app.include_router(genres.router)
+app.include_router(characters.router)
+app.include_router(episodes.router)
+app.include_router(anime.router)
+app.include_router(favorites.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to the Anime Collection Tracker API"}
+    return {"message": "Welcome to the Anime Collection Tracker API!"}
